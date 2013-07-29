@@ -58,6 +58,9 @@ Meta information
 #####6: Magenta
 #####7: Cyan
 
+###Poses
+Poses are incremental starting from 0.
+
 Endpoints
 ---------
 
