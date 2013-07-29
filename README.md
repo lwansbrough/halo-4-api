@@ -12,7 +12,9 @@ If you are unaware of these API endpoints, or would just like them available for
 Most API calls will be in the form of a `GET` request. The requests must contain the following headers:
 
 > Accept: application/json
+>
 > Origin: https://app.halowaypoint.com
+>
 > X-343-Authorization-Spartan: [Spartan token goes here (use the Halo4Api.GetAPIKey method for this)]
 
 A side note: The "Spartan token" you receive from Halo Waypoint is useful for 4 hours. DO NOT REQUEST A NEW KEY WITH EVERY GET, YOU'LL GET YOURSELF BANNED.
