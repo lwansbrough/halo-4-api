@@ -1,12 +1,14 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime;
+using System.Text;
 using System.Collections.Specialized;
 using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Web;
 using Newtonsoft.Json;
-using HaloConnect;
-using System.Collections.Generic;
 
 public class Halo4Api
 {
@@ -77,18 +79,24 @@ public class Halo4Api
         private UserInformation UserInformation { get; set; }
     }
 
+    // Enter an email or pass here to use the GetAPIKey() method without passing values
     private string microsoftEmail = "";
     private string microsoftPassword = "";
-    private string microsoftLoginParamsUrl = "https://login.live.com/login.srf?id=2";
-    private string waypointSigninGatewayUrl = "https://app.halowaypoint.com/oauth/signin?returnUrl=https%3A%2F%2Fapp.halowaypoint.com%2Fen-us";
-    private string waypointSigninPostUrl = "https://login.live.com/ppsecure/post.srf?client_id=000000004C0BD2F1&redirect_uri=https://app.halowaypoint.com/oauth/callback&response_type=code&scope=xbox.basic%20xbox.offline_access&locale=en-us&state={0}";
-    private string waypointRegisterClientServiceUrl = "https://settings.svc.halowaypoint.com/RegisterClientService.svc/spartantoken/wlid?_={0}";
+
+    private string msLogin = "https://login.live.com/login.srf?id=2";
+    private string waypointGateway = "https://app.halowaypoint.com/oauth/signin?returnUrl=https%3A%2F%2Fapp.halowaypoint.com%2Fen-us";
+    private string waypointRegisterUrl = "https://settings.svc.halowaypoint.com/RegisterClientService.svc/spartantoken/wlid?_={0}";
+
+    // New URL's
+    private string urlToScrape = "https://login.live.com/oauth20_authorize.srf?client_id=000000004C0BD2F1&scope=xbox.basic+xbox.offline_access&response_type=code&redirect_uri=https://www.halowaypoint.com:443/oauth/callback&state=https%3A%2F%2Fapp.halowaypoint.com%2Fen-us%2F&locale=en-US&display=touch";
+    private string urlToPost = "https://login.live.com/ppsecure/post.srf?client_id=000000004C0BD2F1&scope=xbox.basic+xbox.offline_access&response_type=code&redirect_uri=https://www.halowaypoint.com:443/oauth/callback&state=https%3A%2F%2Fapp.halowaypoint.com%2Fen-us%2F&locale=en-US&display=touch&bk=1383096785";
+
 
     public static CookieContainer Cookies = new CookieContainer();
 
     private string GetMicrosoftLoginPPFT(int iterationCount = 0) // Going to scrape a page and return an array of strings containing essential values for the login transaction
     {
-        HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(microsoftLoginParamsUrl);
+        HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(urlToScrape);
         HttpWebResponse response;
         try
         {
@@ -147,7 +155,7 @@ public class Halo4Api
 
     private string GetWaypointState(int iterationCount = 0)
     {
-        HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(waypointSigninGatewayUrl);
+        HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(waypointGateway);
         request.CookieContainer = Halo4Api.Cookies;
         HttpWebResponse response;
         try
@@ -186,20 +194,39 @@ public class Halo4Api
         return waypointState;
     }
 
-    private string PerformWaypointLogin(string email, string password)
+    private string PerformWaypointLogin(string email, string pass)
     {
         string PPFT = GetMicrosoftLoginPPFT();
         string PPSX = "Pass";
-        string waypointState = GetWaypointState();
 
-        string query = String.Format("PPFT={0}&PPSX={1}&login={2}&passwd={3}", HttpUtility.UrlEncode(PPFT), PPSX, HttpUtility.UrlEncode(email), HttpUtility.UrlEncode(password));
+        /*
+           PPFT:[loginPPFT]
+           login:[login]
+           passwd:[passwd]
+           LoginOptions:3
+           NewUser:1
+           PPSX:[loginPPSX]
+           type:11
+           i3:[rand]
+           m1:1680
+           m2:1050
+           m3:0
+           i12:1
+           i17:0
+           i18:__MobileLogin|1
+         */
+        string query = String.Format("PPFT={0}&login={1}&passwd={2}&LoginOptions=3&NewUser=1&PPSX={3}&type=11&i3={4}&m1=1680&m2=1050&m3=0&i12=1&i17=0&i18=__MobileLogin|1", PPFT, HttpUtility.UrlEncode(email), HttpUtility.UrlEncode(pass), PPSX, new Random().Next(15000, 50000).ToString());
 
-        HttpWebResponse response = BetterWebRequest.Post(String.Format(waypointSigninPostUrl, waypointState), query);
+        // Get the response of the query using the parameters we created
+        HttpWebResponse response = BetterWebRequest.Post(urlToPost, query);
 
+        // Add the response cookies to our container
         Halo4Api.Cookies.Add(response.Cookies);
 
+        // Close the response object
         response.Close();
 
+        // Return the header that we need
         return response.Headers.Get("Location");
     }
 
@@ -244,7 +271,7 @@ public class Halo4Api
 
     private WaypointSpartanTokenDocument GetWaypointSpartanToken(WaypointAuthTokenDocument authToken)
     {
-        HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(String.Format(waypointRegisterClientServiceUrl, (int)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds));
+        HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(String.Format(waypointRegisterUrl, (int)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds));
         request.Accept = "application/json";
         request.Headers.Add("Origin", "https://app.halowaypoint.com");
         request.Headers.Add("X-343-Authorization-WLID", "v1=" + authToken.access_token);
@@ -299,9 +326,9 @@ public class Halo4Api
         return response.Headers.Get("Location");
     }
 
-    private string GetSpartanTokenViaMicrosoftAuth(string email, string password)
+    private string GetSpartanTokenViaMicrosoftAuth(string email, string pass)
     {
-        string waypointCallbackUrl = PerformWaypointLogin(email, password);
+        string waypointCallbackUrl = PerformWaypointLogin(email, pass);
         string waypointHomepage = GetWaypointWebAuthTokenAndHomepage(waypointCallbackUrl); // Loads the WebAuth token into the cookie store
         WaypointAuthTokenDocument waypointAuthToken = GetWaypointAuthToken(waypointHomepage);
         WaypointSpartanTokenDocument waypointSpartanToken = GetWaypointSpartanToken(waypointAuthToken);
@@ -314,6 +341,18 @@ public class Halo4Api
         try
         {
             return GetSpartanTokenViaMicrosoftAuth(microsoftEmail, microsoftPassword);
+        }
+        catch (Exception e)
+        {
+            throw new Exception(e.Message != null ? e.Message : "An unknown error occurred.");
+        }
+    }
+
+    public string GetAPIKey(String email, String pass)
+    {
+        try
+        {
+            return GetSpartanTokenViaMicrosoftAuth(email, pass);
         }
         catch (Exception e)
         {
